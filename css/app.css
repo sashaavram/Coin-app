@@ -31,7 +31,7 @@ svg{display:block}
 .periodbar{display:flex;align-items:center;justify-content:center;gap:2px;padding:4px 92px 2px;font-size:12.5px;color:var(--muted);position:relative}
 .periodbar button{padding:4px 12px;color:var(--muted);font-size:13px}
 .periodbar .plbl{font-weight:600;min-width:120px;text-align:center}
-.syncdot{position:absolute;right:8px;max-width:86px;overflow:hidden;white-space:nowrap;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:5px;font-size:11px;color:var(--faint)}
+.syncdot{position:absolute;right:6px;max-width:92px;overflow:hidden;white-space:nowrap;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:5px;font-size:11px;color:var(--faint)}
 .syncdot svg{width:15px;height:15px}
 .syncdot.err{color:var(--red)}
 .todaydot{position:absolute;left:10px;top:50%;transform:translateY(-50%);max-width:88px;overflow:hidden;white-space:nowrap;font-size:11px!important;color:var(--faint)!important;padding:4px 0!important;text-align:left}
@@ -59,6 +59,7 @@ body.collapsed #bandIncome,body.collapsed #bandAccounts{display:none}
 .node.income .camt{color:var(--blue)}
 .node.acct .camt{color:#e9a700}
 .node.acct .camt.neg{color:var(--red)}
+.node.acct.off .camt{color:var(--muted)}
 .node.add .cicon{color:#c7cbd3}
 .node.add .cwrap{opacity:.6}
 .node.droptarget .cwrap{transform:scale(1.18)}
@@ -194,6 +195,20 @@ body.editing .node:not(.add) .xbadge,body.editing .node:not(.add) .pencil{displa
 .gfield input::placeholder{color:rgba(255,255,255,.65)}
 .gfield .suf{font-size:13px;color:rgba(255,255,255,.7)}
 .gfield .cur{width:22px;height:22px;border-radius:50%;border:1px solid rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;font-size:12px}
+.gtoggle{display:flex;align-items:center;gap:12px;margin:0 14px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.35);font-size:15.5px}
+.gtoggle span{flex:1}
+.gtoggle small{display:block;font-size:12px;color:rgba(255,255,255,.75);margin-top:2px}
+.gform .toggle i{background:rgba(255,255,255,.3)}
+.gform .toggle input:checked+i{background:rgba(0,0,0,.35)}
+.blist{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.brow{display:flex;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid var(--line2);font-size:15px}
+.brow:last-child{border-bottom:none}
+.brow .bl{flex:1;min-width:0}
+.brow small{display:block;font-size:12px;color:var(--muted);margin-top:1px}
+.bcoin{width:32px;height:32px;border-radius:50%;background:var(--yellow);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.bcoin svg{width:18px;height:18px}
+.tsheet label.toggle{margin:0;display:block}
+#hBalBtn{cursor:pointer}
 .gdanger{margin:28px auto 0;display:block;color:#fff;opacity:.85;font-size:14px;padding:10px 20px;border:1px solid rgba(255,255,255,.6);border-radius:20px}
 .iconpick{position:absolute;inset:0;background:var(--sheet-green);z-index:5;display:flex;flex-direction:column;padding:calc(var(--safe-top) + 16px) 12px calc(12px + var(--safe-bot))}
 .iconpick .igrid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(4,1fr);gap:18px 0;align-content:start;padding-top:8px}

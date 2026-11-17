@@ -49,7 +49,9 @@ function renderHome(){
   const r=curRange(),tx=S.txns.filter(t=>inRange(t,r)),cur=domCur(tx);
   $('#periodLbl').textContent=periodLabel(S.prefs.period,anchor);
   const vis=Object.values(S.accounts).filter(a=>!a.hidden);
-  const bal=vis.filter(a=>(a.currency||'USD')===cur).reduce((s,a)=>s+a.balance,0);
+  const bal=vis.filter(a=>!a.noTotal&&(a.currency||'USD')===cur).reduce((s,a)=>s+a.balance,0);
+  const nOff=vis.filter(a=>a.noTotal).length;
+  $('#hBalLab').textContent=nOff?`Balance · ${vis.length-nOff}/${vis.length}`:'Balance';
   const exp=tx.filter(t=>t.kind==='exp'&&(t.cur||'USD')===cur).reduce((s,t)=>s+t.amount,0);
   const plan=Object.keys(S.cats).reduce((s,n)=>s+budgetFor(n),0);
   $('#hBal').textContent=fmtS(Math.round(bal*100)/100,cur);$('#hExp').textContent=fmt(exp,cur);$('#hPlan').textContent=fmt(Math.round(plan),cur);
@@ -62,7 +64,8 @@ function renderHome(){
 
   h='';
   for(const name of Object.keys(S.accounts)){const a=S.accounts[name];if(a.hidden)continue;
-    h+=nodeHTML('acct drag',name,a.icon,coinSVG(1,'var(--yellow)'),`<div class="camt num ${a.balance<0?'neg':''}">${fmtS(a.balance,a.currency)}</div>`);}
+    h+=nodeHTML('acct drag'+(a.noTotal?' off':''),name,a.icon,coinSVG(1,a.noTotal?'#f6dd93':'var(--yellow)'),
+      `<div class="camt num ${a.balance<0?'neg':''}">${fmtS(a.balance,a.currency)}</div>`,a.noTotal?'<div class="cbud">not in total</div>':'');}
   $('#gridAccounts').innerHTML=h+addSlot('acct');
 
   const byCat={};
@@ -427,7 +430,8 @@ const FORM_TXT={cat:['What do you spend money on?','Expense category','svg:tag']
 function openForm(kind,name){
   const ent=name?(kind==='cat'?S.cats[name]:kind==='acct'?S.accounts[name]:S.incomes[name]):null;
   let icon=ent?ent.icon:FORM_TXT[kind][2],nm=name||'',
-      amount=ent?(kind==='cat'?ent.budget||'':kind==='acct'?ent.balance:''):'';
+      amount=ent?(kind==='cat'?ent.budget||'':kind==='acct'?ent.balance:''):'',
+      inTotal=!(ent&&ent.noTotal);
   const linked=kind==='acct'&&name&&Object.values(S.sfLinks).includes(name);
   const page=pushPage('gform',el=>{
     el.innerHTML=`<div class="etop"><button class="navbtn" data-a="x">${ic('close')}</button><button class="navbtn" data-a="ok">${ic('check',2)}</button></div>
@@ -436,11 +440,13 @@ function openForm(kind,name){
       <div class="gtabs"><div class="on">${FORM_TXT[kind][1]}</div></div>
       <div class="gfield"><input id="gName" placeholder="Enter name" value="${esc(nm)}" maxlength="40"><span class="cur">$</span></div>
       ${kind==='cat'?`<div class="gfield"><input id="gAmt" type="number" inputmode="decimal" placeholder="Planning to spend" value="${amount}"><span class="suf">per month</span></div>`:''}
-      ${kind==='acct'?`<div class="gfield"><input id="gAmt" type="number" inputmode="decimal" placeholder="Current balance" value="${amount}" ${linked?'disabled':''}><span class="suf">${linked?'from bank':'balance'}</span></div>`:''}
+      ${kind==='acct'?`<div class="gfield"><input id="gAmt" type="number" inputmode="decimal" placeholder="Current balance" value="${amount}" ${linked?'disabled':''}><span class="suf">${linked?'from bank':'balance'}</span></div>
+      <label class="gtoggle"><span>Count in total balance<small>Turn off for money you keep on the side, like savings</small></span>${tog('gTotal',inTotal)}</label>`:''}
       ${name?`<button class="gdanger" data-a="del">Delete ${kind==='cat'?'category':kind==='acct'?'account':'income source'}</button>`:''}
       </div>`;
     const nameIn=el.querySelector('#gName'),amtIn=el.querySelector('#gAmt');
     nameIn.oninput=e=>nm=e.target.value;if(amtIn)amtIn.oninput=e=>amount=e.target.value;
+    const totIn=el.querySelector('#gTotal');if(totIn)totIn.onchange=e=>inTotal=e.target.checked;
     el.querySelector('[data-a=x]').onclick=()=>popPage(page);
     el.querySelector('[data-a=icon]').onclick=()=>iconPicker(el,icon,v=>{icon=v;el.querySelector('.gicon').innerHTML=renderIcon(v);});
     const del=el.querySelector('[data-a=del]');if(del)del.onclick=()=>confirmDelete(kind,name,()=>popPage(page));
@@ -456,6 +462,7 @@ function openForm(kind,name){
       else ensureIncome(n,icon);
       if(kind==='cat')S.cats[canonCat(n)].budget=a>0?a:0;
       if(kind==='acct'&&!linked&&!isNaN(a))S.accounts[n].balance=a;
+      if(kind==='acct'){if(inTotal)delete S.accounts[n].noTotal;else S.accounts[n].noTotal=true;}
       save();popPage(page);renderAll();};
     if(!name)setTimeout(()=>nameIn.focus(),350);
   },{up:true});
@@ -496,6 +503,25 @@ function confirmDelete(kind,name,after){
       else if(kind==='acct'){delete S.accounts[name];for(const id in S.sfLinks)if(S.sfLinks[id]===name){delete S.sfLinks[id];delete S.sfAccounts[id];}}
       save();done();}},
     {label:'Cancel',bold:true}]);}
+
+/* ---------- balance breakdown: choose which accounts count toward the total ---------- */
+function openBalanceSheet(){
+  const names=Object.keys(S.accounts).filter(n=>!S.accounts[n].hidden);
+  if(!names.length)return;
+  const cur=domCur(S.txns.filter(t=>inRange(t,curRange())));
+  const total=()=>fmtS(Math.round(names.filter(n=>!S.accounts[n].noTotal&&(S.accounts[n].currency||'USD')===cur)
+    .reduce((s,n)=>s+S.accounts[n].balance,0)*100)/100,cur);
+  const ov=overlay(`<div class="tsheet"><div class="grab"></div>
+    <div class="tamt num" id="bTotal">${total()}</div><div class="tsub">Total balance</div>
+    <label>Counted in the total</label>
+    <div class="blist">${names.map(n=>{const a=S.accounts[n],other=(a.currency||'USD')!==cur;return`<div class="brow">
+      <span class="bcoin">${renderIcon(a.icon)}</span><div class="bl">${esc(n)}<small class="num">${fmtS(a.balance,a.currency)}${other?' · other currency, never added':''}</small></div>
+      ${other?'':tog('',!a.noTotal).replace('type="checkbox"',`type="checkbox" data-tot="${esc(n)}"`)}</div>`;}).join('')}</div>
+    <div class="row2"><button id="bDone">Done</button></div></div>`);
+  ov.querySelectorAll('[data-tot]').forEach(c=>c.onchange=()=>{const a=S.accounts[c.dataset.tot];
+    if(c.checked)delete a.noTotal;else a.noTotal=true;
+    save();renderHome();ov.querySelector('#bTotal').textContent=total();});
+  ov.querySelector('#bDone').onclick=()=>ov.remove();}
 
 /* ---------- drawer ---------- */
 function renderDrawer(){
@@ -634,6 +660,7 @@ function openHelp(){
       <h3>Gestures</h3>
       <ul style="padding-left:20px"><li>Drag an account onto a category to record spending, income onto an account to record income, and one account onto another for a transfer.</li>
       <li>Hold any coin to edit, reorder (drag categories) or delete.</li>
+      <li>Tap <b>Balance</b> at the top to choose which accounts count toward the total. An account you switch off keeps its coin and its own balance.</li>
       <li>Swipe a transaction left to delete it.</li></ul>
     </div>`;
     el.querySelector('.back').onclick=()=>popPage(page);});}
@@ -673,6 +700,7 @@ $('#prevP').onclick=()=>{anchor=shiftPeriod(S.prefs.period,anchor,-1);renderHome
 $('#nextP').onclick=()=>{anchor=shiftPeriod(S.prefs.period,anchor,1);renderHome();};
 $('#periodLbl').onclick=()=>periodSheet(S.prefs.period,t=>{S.prefs.period=t;anchor=new Date();save();renderAll();});
 $('#syncDot').onclick=()=>runSync(true);
+$('#hBalBtn').onclick=openBalanceSheet;
 $('#todayDot').onclick=()=>openFeed();
 $('#editDone').onclick=exitEdit;
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){
