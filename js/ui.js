@@ -88,7 +88,7 @@ function renderHome(){
   $('#homeEmpty').classList.toggle('hidden',!none);
   if(none)$('#homeEmpty').innerHTML=`Connect your bank and every card's transactions will show up here by themselves.<br>
     <button class="btn" onclick="openSettings()">Connect bank</button>`;
-  $('#dragHint').classList.toggle('hidden',none||document.body.classList.contains('editing'));
+  setHint();
   renderSyncDot();}
 
 let syncErr='';
@@ -115,7 +115,7 @@ function nodeInfo(el){return{kind:el.dataset.kind.split(' ')[0],name:el.dataset.
 document.getElementById('homeScroll').addEventListener('pointerdown',e=>{
   const el=e.target.closest('.node');if(!el||e.button>0)return;
   const info=nodeInfo(el),add=el.classList.contains('add'),editing=document.body.classList.contains('editing');
-  const canDrag=!add&&(editing?info.kind==='cat':(info.kind==='income'||info.kind==='acct'));
+  const canDrag=!add&&(editing||info.kind==='income'||info.kind==='acct'); /* edit mode: any coin can be dragged to swap */
   ptr={info,add,canDrag,x0:e.clientX,y0:e.clientY,started:false,long:false,onX:!!e.target.closest('.xbadge'),
     timer:add||editing?null:setTimeout(()=>{if(ptr&&!ptr.started){ptr.long=true;enterEdit();}},480)};
   if(canDrag)e.preventDefault();});
@@ -129,7 +129,8 @@ document.addEventListener('pointermove',e=>{
     const k=ptr.info.kind,g=document.createElement('div');g.className='drag-ghost';
     g.style.background=k==='income'?'var(--blue)':k==='acct'?'var(--yellow)':'var(--green)';
     g.innerHTML=renderIcon(k==='income'?S.incomes[ptr.info.name].icon:k==='acct'?S.accounts[ptr.info.name].icon:catIcon(ptr.info.name));
-    document.body.appendChild(g);ptr.ghost=g;ptr.info.el.style.opacity=.35;}
+    document.body.appendChild(g);ptr.ghost=g;ptr.info.el.style.opacity=.35;requestAnimationFrame(autoScroll);}
+  ptr.x=e.clientX;ptr.y=e.clientY;
   ptr.ghost.style.left=e.clientX+'px';ptr.ghost.style.top=e.clientY+'px';
   $$('.node.droptarget').forEach(n=>n.classList.remove('droptarget'));
   const t=dropAt(e.clientX,e.clientY);if(t)t.el.classList.add('droptarget');},{passive:false});
@@ -140,7 +141,7 @@ function endPtr(e,cancel){
   if(cancel||p.long)return;
   const editing=document.body.classList.contains('editing');
   if(p.started){const t=dropAt(e.clientX,e.clientY,p.info);if(!t)return;
-    if(editing){moveCatTo(p.info.name,t.name);renderAll();}
+    if(editing){swapCoins(p.info.kind,p.info.name,t.name);renderAll();}
     else openEntry(p.info,t);
     return;}
   if(p.add){openForm(p.info.kind);return;}
@@ -153,16 +154,34 @@ function dropAt(x,y,src){
   let el=document.elementFromPoint(x,y);el=el&&el.closest('.node');
   if(!el||el.classList.contains('add')||!s)return null;
   const d=nodeInfo(el);
-  if(document.body.classList.contains('editing'))return s.kind==='cat'&&d.kind==='cat'&&d.name!==s.name?d:null;
+  if(document.body.classList.contains('editing'))return d.kind===s.kind&&d.name!==s.name?d:null; /* swap within the same row type */
   if(s.kind==='income')return d.kind==='acct'?d:null;
   if(s.kind==='acct')return d.kind==='cat'||(d.kind==='acct'&&d.name!==s.name)?d:null;
   return null;}
 function enterEdit(){if(navigator.vibrate)navigator.vibrate(15);
-  document.body.classList.add('editing');$('#editDone').classList.remove('hidden');$('#dragHint').classList.add('hidden');}
+  document.body.classList.add('editing');$('#editDone').classList.remove('hidden');setHint();}
 function exitEdit(){document.body.classList.remove('editing');$('#editDone').classList.add('hidden');renderHome();}
-function moveCatTo(name,target){
-  const names=orderedCats().filter(n=>n!==name);names.splice(names.indexOf(target),0,name);
-  names.forEach((n,i)=>S.cats[n].order=i);save();}
+/* While a coin is being dragged near an edge, scroll what is under it:
+   the page up or down, and the income / accounts row sideways. */
+function autoScroll(){
+  if(!ptr||!ptr.started)return;
+  const hs=$('#homeScroll'),r=hs.getBoundingClientRect();
+  if(ptr.y>r.bottom-80)hs.scrollTop+=9;else if(ptr.y<r.top+45)hs.scrollTop-=9;
+  const row=ptr.info.kind==='income'?$('#gridIncome'):ptr.info.kind==='acct'?$('#gridAccounts'):null;
+  if(row&&Math.abs(ptr.y-(row.getBoundingClientRect().top+50))<90){
+    if(ptr.x>innerWidth-40)row.scrollLeft+=7;else if(ptr.x<40)row.scrollLeft-=7;}
+  requestAnimationFrame(autoScroll);}
+const HINT_NORMAL='Drag an account onto a category to add an expense. Drag income onto an account to add income. Hold a coin to edit.';
+const HINT_EDIT='Drag a coin onto another one to swap their places. Tap a coin to edit it, or ✕ to delete.';
+function setHint(){const h=$('#dragHint'),ed=document.body.classList.contains('editing');
+  h.textContent=ed?HINT_EDIT:HINT_NORMAL;h.classList.toggle('hidden',!ed&&!S.txns.length&&!S.accessUrl);}
+/* Swap the positions of two coins of the same kind. Categories carry an explicit
+   order; accounts and income sources are shown in the order they are stored. */
+function swapCoins(kind,a,b){
+  if(kind==='cat'){const A=S.cats[a],B=S.cats[b];if(!A||!B)return;const t=A.order;A.order=B.order;B.order=t;}
+  else{const key=kind==='acct'?'accounts':'incomes',o=S[key];if(!o[a]||!o[b])return;
+    S[key]=Object.fromEntries(Object.keys(o).map(k=>k===a?[b,o[b]]:k===b?[a,o[a]]:[k,o[k]]));}
+  save();}
 
 /* ================= pages ================= */
 const pageStack=[];
@@ -659,7 +678,7 @@ function openHelp(){
       <p>Everything is stored on this phone, tied to this web address. Add the app to your Home Screen (Safari → Share → Add to Home Screen) and always open it from that icon. Download a backup from Settings now and then.</p>
       <h3>Gestures</h3>
       <ul style="padding-left:20px"><li>Drag an account onto a category to record spending, income onto an account to record income, and one account onto another for a transfer.</li>
-      <li>Hold any coin to edit, reorder (drag categories) or delete.</li>
+      <li>Hold any coin to enter edit mode. There you can drag a coin onto another one to swap their places (categories, accounts and income sources), tap a coin to rename it or change its icon, or tap ✕ to delete it. Tap Done when finished.</li>
       <li>Tap <b>Balance</b> at the top to choose which accounts count toward the total. An account you switch off keeps its coin and its own balance.</li>
       <li>Swipe a transaction left to delete it.</li></ul>
     </div>`;
