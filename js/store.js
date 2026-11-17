@@ -9,12 +9,12 @@ function blank(){return{
   incomes:{},   // name -> {icon}
   accounts:{},  // name -> {icon,balance,currency,hidden,manual}
   cats:{},      // name -> {icon,budget,order}
-  txns:[],      // {uid,uid2?,date,kind:'exp'|'inc'|'tf',amount,cat?,src?,from?,to?,acct?,payee,note,cur}
+  txns:[],      // {uid,uid2?,pend?,date,kind:'exp'|'inc'|'tf',amount,cat?,src?,from?,to?,acct?,payee,note,cur}
   payeeMap:{},  // normalized payee -> category
   sfLinks:{},   // simplefin account id -> our account name
   sfAccounts:{},// simplefin account id -> {name,org,balance,currency,seen}
   deleted:{},   // tombstones: uids the user deleted (so imports/syncs don't resurrect them)
-  prefs:{autoSync:true,showBudget:true,colorOver:true,largeFont:false,period:'month'},
+  prefs:{autoSync:true,pending:true,showBudget:true,colorOver:true,largeFont:false,period:'month'},
 };}
 function pack(){
   const catN=Object.keys(S.cats),acctN=Object.keys(S.accounts),incN=Object.keys(S.incomes),curs=[];
@@ -27,7 +27,8 @@ function pack(){
     if(t.kind==='exp')r=[0,...base,ci[t.cat],ai[t.acct],t.payee===t.cat?'':t.payee];
     else if(t.kind==='inc')r=[1,...base,ii[t.src],ai[t.acct],t.payee===t.src?'':t.payee];
     else r=[2,...base,ai[t.from],ai[t.to],t.payee==='Transfer'?'':t.payee];
-    if(t.uid2)r.push(t.uid2);
+    if(t.uid2||t.pend)r.push(t.uid2||'');
+    if(t.pend)r.push(1); /* still pending at the bank */
     return r;});
   return JSON.stringify({v:3,accessUrl:S.accessUrl,proxyUrl:S.proxyUrl,lastSync:S.lastSync,lastSyncMsg:S.lastSyncMsg,
     incomes:S.incomes,accounts:S.accounts,cats:S.cats,payeeMap:S.payeeMap,sfLinks:S.sfLinks,
@@ -40,9 +41,9 @@ function unpack(d){
   s.prefs=Object.assign(s.prefs,d.prefs||{});
   const KIND=['exp','inc','tf'];
   s.txns=(d.T||[]).map(a=>{
-    const[k,date,cents,cui,uid,note,i1,i2,payee,uid2]=a;
+    const[k,date,cents,cui,uid,note,i1,i2,payee,uid2,pend]=a;
     const t={uid,date,kind:KIND[k],amount:cents/100,note,cur:d.curs[cui]||'USD'};
-    if(uid2)t.uid2=uid2;
+    if(uid2)t.uid2=uid2;if(pend)t.pend=1;
     if(t.kind==='exp'){t.cat=d.catN[i1];t.acct=d.acctN[i2];t.payee=payee||t.cat;}
     else if(t.kind==='inc'){t.src=d.incN[i1];t.acct=d.acctN[i2];t.payee=payee||t.src;}
     else{t.from=d.acctN[i1];t.to=d.acctN[i2];t.payee=payee||'Transfer';}

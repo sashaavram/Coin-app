@@ -78,6 +78,9 @@ function renderHome(){
       budget&&S.prefs.showBudget?`<div class="cbud num">${Math.round(budget).toLocaleString('en-US').replace(/,/g,' ')}</div>`:'');}
   $('#gridCats').innerHTML=h+addSlot('cat');
 
+  const td=today(),tdTx=S.txns.filter(t=>t.date===td&&t.kind==='exp'),tdCur=domCur(tdTx.length?tdTx:tx);
+  const tdSum=tdTx.filter(t=>(t.cur||'USD')===tdCur).reduce((s,t)=>s+t.amount,0);
+  $('#todayDot').innerHTML=S.txns.length?`Today <b class="num">${fmt(Math.round(tdSum*100)/100,tdCur)}</b>`:'';
   const none=!S.txns.length&&!S.accessUrl;
   $('#homeEmpty').classList.toggle('hidden',!none);
   if(none)$('#homeEmpty').innerHTML=`Connect your bank and every card's transactions will show up here by themselves.<br>
@@ -98,7 +101,9 @@ async function runSync(manual){
   const r=await syncNow();
   syncErr=r.ok?'':r.msg;
   renderAll();
-  if(manual||!r.ok||r.added)toast(r.ok?(r.added?r.msg.split('\n')[0]:'Up to date. No new transactions.'):r.msg);}
+  if(manual||!r.ok||r.added||r.finalized){
+    const lines=r.ok?r.msg.split('\n').filter(l=>!l.startsWith('Bank notes')):[r.msg];
+    toast(r.ok&&!r.added&&!r.finalized&&!r.dropped?'Up to date. No new transactions.':lines.slice(0,4).join('\n'));}}
 function autoSync(){if(syncDue())runSync(false);}
 
 /* ---------- pointer: tap, long-press (edit mode), drag ---------- */
@@ -243,9 +248,9 @@ function rowHTML(t,ctx){
   const v=txnSigned(t,ctx);
   const cls=t.kind==='tf'&&!(ctx&&ctx.type==='acct')?'tf':v>0?'pos':'';
   const noteTxt=t.note&&t.note!==t.payee?t.note:'';
-  return`<div class="trow" data-uid="${esc(t.uid)}"><div class="tdel">Delete</div><div class="tin">
+  return`<div class="trow${t.pend?' pending':''}" data-uid="${esc(t.uid)}"><div class="tdel">Delete</div><div class="tin">
     <div class="tl"><div class="ta">${esc(top)}</div><div class="tc">${esc(main)}</div>${sub?`<div class="tp">${esc(sub)}</div>`:''}</div>
-    <div class="tr"><div class="tv num ${cls}">${v>0?'+':v<0?'-':''}${fmt(t.amount,t.cur)}</div>${noteTxt?`<div class="tn">${esc(noteTxt)}</div>`:''}</div>
+    <div class="tr"><div class="tv num ${cls}">${v>0?'+':v<0?'-':''}${fmt(t.amount,t.cur)}</div>${t.pend?'<div class="tn pend">pending</div>':''}${noteTxt?`<div class="tn">${esc(noteTxt)}</div>`:''}</div>
   </div></div>`;}
 function dayListHTML(tx,ctx,limit){
   if(!tx.length)return'<div class="empty">No transactions in this period.</div>';
@@ -297,7 +302,8 @@ function openTxnSheet(t){
   const ov=overlay(`<div class="tsheet"><div class="grab"></div>
     <div class="tamt num ${t.kind}">${v>0?'+':v<0?'-':''}${fmt(t.amount,t.cur)}</div>
     <div class="tpay">${esc(t.payee||'')}</div>
-    <div class="tsub">${esc(sub)} · ${new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}${t.uid[0]==='s'?' · from bank':''}</div>
+    <div class="tsub">${esc(sub)} · ${new Date(t.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}${t.pend?' · pending':t.uid[0]==='s'||t.uid2?' · from bank':''}</div>
+    ${t.pend?'<div class="pendnote">Pending at the bank. The amount can still change (a tip, a hold being adjusted). It updates itself when the charge posts, and keeps this category and comment.</div>':''}
     <label>Comment</label><input id="tCmt" placeholder="Add a note…" value="${esc(t.note&&t.note!==t.payee?t.note:'')}">
     <label>Date</label><input id="tDate" type="date" value="${t.date}">
     ${t.kind==='exp'?`<label>Category${t.payee&&t.payee!==t.cat?' · this payee will follow':''}</label><div class="catpick">${orderedCats().map(n=>
@@ -523,7 +529,8 @@ function openSettings(){
         ${showTok?`<div class="sform"><input id="sfToken" placeholder="Paste setup token" autocomplete="off" autocapitalize="off" spellcheck="false">
           <button class="btn" id="btnConnect">Connect</button></div>`:''}
         ${S.accessUrl?`<button class="srow btnrow" id="btnSync">${syncing?'Syncing…':'Sync now'}</button>
-          <div class="srow">${sic('sync','#33b8ee')}<div class="sl">Sync automatically<small>Every time you open the app (at most once an hour)</small></div>${tog('pAuto',S.prefs.autoSync)}</div>`:''}
+          <div class="srow">${sic('sync','#33b8ee')}<div class="sl">Sync automatically<small>Every time you open the app (at most once an hour)</small></div>${tog('pAuto',S.prefs.autoSync)}</div>
+          <div class="srow">${sic('cal','#ff9330')}<div class="sl">Show pending charges<small>Count card charges the moment they happen. Each one updates to the final amount (tip included) when it posts.</small></div>${tog('pPend',S.prefs.pending!==false)}</div>`:''}
       </div>
       <div class="sfoot ${msgCls}">${msg?esc(msg).replace(/\n/g,'<br>'):S.accessUrl?(S.lastSyncMsg?'Last sync: '+esc(S.lastSyncMsg):''):
         'Connect once and new card and bank transactions arrive by themselves, already sorted into categories. See Help for the 3-minute setup.'}</div></div>
@@ -574,6 +581,7 @@ function openSettings(){
     const bs=el.querySelector('#btnSync');
     if(bs)bs.onclick=async()=>{bs.textContent='Syncing…';const r=await syncNow();syncErr=r.ok?'':r.msg;renderAll();say(r.msg,r.ok?'ok':'err');};
     const pa=el.querySelector('#pAuto');if(pa)pa.onchange=e=>{S.prefs.autoSync=e.target.checked;save();};
+    const pp=el.querySelector('#pPend');if(pp)pp.onchange=e=>{S.prefs.pending=e.target.checked;save();};
     el.querySelectorAll('[data-link]').forEach(s=>s.onchange=()=>{const id=s.dataset.link,old=S.sfLinks[id],nw=s.value;
       if(old===nw)return;S.sfLinks[id]=nw;
       const a=S.sfAccounts[id];if(a)Object.assign(S.accounts[nw],{balance:a.balance,currency:a.currency,manual:false,hidden:false});
@@ -617,6 +625,7 @@ function openHelp(){
       <p>From then on, new transactions arrive whenever you open the app. Pull them on demand from the menu with <b>Synchronize data</b>, or tap the sync status next to the month.</p>
       <h3>What happens to synced transactions</h3>
       <ul style="padding-left:20px"><li>Each one is filed into a category from the merchant type and payees you've sorted before. Move one to another category and that payee follows from then on.</li>
+      <li>Card charges appear while still <b>pending</b>, so today's total is real. When the bank posts the final charge (for example a restaurant bill with the tip added), the same entry updates to the final amount. It is never counted twice, and a hold that gets released disappears by itself.</li>
       <li>Card payments from checking show as transfers, not as spending.</li>
       <li>Refunds on a card reduce that category's spending.</li>
       <li>Anything you already entered by hand or imported from CoinKeeper is matched, not duplicated.</li></ul>
@@ -664,6 +673,7 @@ $('#prevP').onclick=()=>{anchor=shiftPeriod(S.prefs.period,anchor,-1);renderHome
 $('#nextP').onclick=()=>{anchor=shiftPeriod(S.prefs.period,anchor,1);renderHome();};
 $('#periodLbl').onclick=()=>periodSheet(S.prefs.period,t=>{S.prefs.period=t;anchor=new Date();save();renderAll();});
 $('#syncDot').onclick=()=>runSync(true);
+$('#todayDot').onclick=()=>openFeed();
 $('#editDone').onclick=exitEdit;
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){
   renderHome();autoSync();}});

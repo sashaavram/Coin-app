@@ -15,10 +15,15 @@ After that, opening the app syncs automatically (at most once an hour). You can 
 What sync does with each new bank transaction:
 
 - **Category.** Chosen from payees you've categorized before, then the merchant category code (MCC) from the bank, then keywords. Move a transaction to another category and that payee follows from then on.
+- **Pending charges.** A card charge appears as soon as the bank lists it as pending, so today's spending is real. When it posts, the same entry takes the final amount (a restaurant bill with the tip added, a gas pump's $1 hold replaced by the real total) and keeps the category and comment you gave it. It is never counted twice, and a hold the bank releases is removed after a few days. This needs the bank to report pending charges through SimpleFIN; most do. You can turn it off in Settings.
 - **Card payments.** A $500 payment from checking to AMEX becomes one transfer between those two coins, not an expense plus income.
 - **Refunds.** Money back on a card reduces that category's spending.
 - **Paychecks.** Payroll deposits go to *Salary*. Other deposits go to *Other*.
 - **No duplicates.** Transactions you entered by hand or imported from a CoinKeeper CSV are matched to the bank's copy instead of being added twice.
+
+## Who can see your data
+
+This repository holds only the app's code. Your transactions, budgets and bank connection key are saved in the browser on your own phone and are never uploaded to GitHub or anywhere else. Anyone else who opens the app's web address gets an empty app of their own. Keep backup files private (they include the bank connection key), and don't add them or screenshots of your data to this repository.
 
 ## Install on the phone
 
