@@ -41,6 +41,10 @@ GitHub Pages serves the app from this repo (Settings → Pages → deploy from `
 
 The storage format is unchanged from the earlier single-file version, so data already on a phone keeps loading after an update.
 
+## Updates
+
+Each time the app comes to the front it reads `version.json` and, if a newer version has been published, reloads itself so every file is fetched fresh. Settings shows the running version. Before committing a change to the app, run `tools/bump-version.sh` to stamp a new version; without it phones keep running the files they already have.
+
 ## Run locally
 
 ```bash

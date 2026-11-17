@@ -607,6 +607,10 @@ function openSettings(){
         <div class="srow link">${sic('upload','#1a82fb')}<div class="sl">Restore backup</div><input type="file" id="bkFile" accept=".json,application/json"></div>
       </div><div class="sfoot" id="dataStats">${S.txns.length.toLocaleString()} transactions · ${Object.keys(S.cats).length} categories · saved on this device</div></div>
 
+      <div class="sgroup"><h4>App</h4><div class="box">
+        <button class="srow link" id="btnUpdate">${sic('sync','#8e8e93')}<div class="sl">Check for update</div><span class="sv">v ${esc(APP_VERSION)}</span></button>
+      </div><div class="sfoot">The app updates itself when you open it. Your data is not touched by an update.</div></div>
+
       <div class="sgroup"><div class="box">
         ${S.accessUrl?`<button class="srow danger" id="btnDisconnect">Disconnect bank</button>`:''}
         <button class="srow danger" id="btnReset">Erase everything on this device</button>
@@ -640,6 +644,7 @@ function openSettings(){
       try{const r=importCoinKeeper(await f.text());renderAll();
         say(`Imported ${r.added} rows: ${r.exp} expenses, ${r.inc} income, ${r.tf} transfers (${r.skipped} duplicates skipped).`,'ok');}
       catch(err){say(err.message,'err');}};
+    el.querySelector('#btnUpdate').onclick=()=>checkUpdate(true);
     el.querySelector('#btnExport').onclick=exportCSV;
     el.querySelector('#btnBackup').onclick=downloadBackup;
     el.querySelector('#bkFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;
@@ -710,6 +715,28 @@ function toast(msg,act){const old=document.querySelector('.toast');if(old)old.re
     b.onclick=()=>{t.remove();act.fn();};t.appendChild(b);}
   document.body.appendChild(t);clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.remove(),act?5000:3500);}
 
+/* ---------- staying up to date ----------
+   A home-screen web app is kept suspended by iOS and can go on running old code
+   for days. Each time the app comes to the front it asks the server which version
+   is current and, if it is behind, reloads itself at a fresh address so every
+   file is fetched again. Data is in localStorage and is not affected. */
+const APP_VERSION=window.APP_VERSION||'dev';
+let lastUpdateCheck=0;
+async function checkUpdate(manual){
+  if(!manual&&Date.now()-lastUpdateCheck<5*60*1000)return;
+  lastUpdateCheck=Date.now();
+  try{
+    const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)throw 0;
+    const v=(await r.json()).v;
+    if(!v||v===APP_VERSION){if(manual)toast('You have the latest version.');return;}
+    const go=()=>{try{sessionStorage.setItem('updTried',v);}catch(e){}
+      location.replace(location.pathname+'?v='+encodeURIComponent(v));};
+    let tried='';try{tried=sessionStorage.getItem('updTried')||'';}catch(e){}
+    const busy=pageStack.length||$('#overlay').children.length||document.body.classList.contains('editing');
+    if(manual||(!busy&&tried!==v))go();           /* never interrupt something in progress, never loop */
+    else if(tried!==v)toast('A new version is ready.',{action:'Update',fn:go});
+  }catch(e){if(manual)toast('Could not check for updates. Are you online?');}}
+
 /* ================= wiring ================= */
 $('#menuBtn').innerHTML=ic('menu',2);$('#collapseBtn').innerHTML=ic('up',2);
 $('#menuBtn').onclick=openDrawer;$('#drawerBg').onclick=closeDrawer;
@@ -723,9 +750,11 @@ $('#hBalBtn').onclick=openBalanceSheet;
 $('#todayDot').onclick=()=>openFeed();
 $('#editDone').onclick=exitEdit;
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){
-  renderHome();autoSync();}});
+  renderHome();autoSync();checkUpdate();}});
+window.addEventListener('pageshow',e=>{if(e.persisted)checkUpdate();});
 
 document.body.classList.toggle('large',!!S.prefs.largeFont);
 probeStorage();
 renderAll();
 autoSync();
+setTimeout(()=>checkUpdate(),1500);
